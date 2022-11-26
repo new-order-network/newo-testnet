@@ -29,7 +29,7 @@ export type Wallet = {
   privateKey: String;
 };
 
-export const amountWallets = 1; // how many wallets to be created and seeded for providing liq / doing swaps
+export const amountWallets = 10; // how many wallets to be created and seeded for providing liq / doing swaps
 export const swapAmountIn = "100"; // how many usdc to swap to newo
 export const amountEthSeed = "0.1"; // how much eth to give each new wallet
 export const positionManagerAddress =
@@ -291,7 +291,7 @@ export async function provideLiquidity(
 
   const position = new Position({
     pool: NEWO_USDC_POOL,
-    liquidity: ethers.utils.parseUnits("0.01", 18).toHexString(), // poolData.liquidity * 0.0002, how much liquidity to add, 0.0002 times the
+    liquidity: poolData.liquidity * 0.002, // how much liquidity to add, 0.0002 times the
     tickLower:
       nearestUsableTick(poolData.tick, poolData.tickSpacing) -
       poolData.tickSpacing * 2,
