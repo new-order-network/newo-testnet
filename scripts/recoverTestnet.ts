@@ -19,48 +19,50 @@ async function getFunds(allPKeys: any) {
 
   // for every private key passed in
   for (let i = 0; i < allPKeys.length; i++) {
-    console.log(
-      "Sending ETH from pkey",
-      allPKeys[i].toString().slice(0, 6),
-      "..."
-    );
+    try {
+      console.log(
+        "Sending ETH from pkey",
+        allPKeys[i].toString().slice(0, 6),
+        "..."
+      );
 
-    // add pkey to signer and use signer for for loop of sending
-    const signer = new ethers.Wallet(allPKeys[i], provider); // row[2] is the pkey
+      // add pkey to signer and use signer for for loop of sending
+      const signer = new ethers.Wallet(allPKeys[i], provider); // row[2] is the pkey
 
-    const balance = await signer.getBalance();
-    const gasLimit = await signer.provider.estimateGas({
-      to: deployer.address,
-      value: balance,
-    });
-    const gasPrice = await signer.provider.getFeeData();
-
-    // wait for gasPrice to finish pulling
-    if (
-      gasPrice.maxFeePerGas != null &&
-      gasPrice.maxPriorityFeePerGas != null
-    ) {
-      const sendPrice = gasPrice.maxFeePerGas.mul(gasLimit);
-
-      // check for enough funds including gas price
-      if (balance.lt(sendPrice)) {
-        throw new Error(
-          `Insufficient funds in csv wallet for current gas price`
-        );
-      }
-
-      // subtract gas cost from wallet balance
-      const amountToSend = balance.sub(sendPrice);
-      console.log(ethers.utils.formatEther(amountToSend));
-
-      // send wallet balance to main deployer wallet
-      const sendEth = await signer.sendTransaction({
+      const balance = await signer.getBalance();
+      const gasLimit = await signer.provider.estimateGas({
         to: deployer.address,
-        value: amountToSend,
-        maxFeePerGas: gasPrice.maxFeePerGas,
-        maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas,
+        value: balance,
       });
-      await sendEth.wait(); // sit and wait for each send to finish
+      const gasPrice = await signer.provider.getFeeData();
+
+      // wait for gasPrice to finish pulling
+      if (
+        gasPrice.maxFeePerGas != null &&
+        gasPrice.maxPriorityFeePerGas != null
+      ) {
+        const sendPrice = gasPrice.maxFeePerGas.mul(gasLimit);
+
+        // check for enough funds including gas price
+        if (balance.lt(sendPrice)) {
+          console.log("Insufficient funds in wallet for current gas price");
+        } else {
+          // subtract gas cost from wallet balance
+          const amountToSend = balance.sub(sendPrice);
+          console.log(ethers.utils.formatEther(amountToSend));
+
+          // send wallet balance to main deployer wallet
+          const sendEth = await signer.sendTransaction({
+            to: deployer.address,
+            value: amountToSend,
+            maxFeePerGas: gasPrice.maxFeePerGas,
+            maxPriorityFeePerGas: gasPrice.maxPriorityFeePerGas,
+          });
+          await sendEth.wait(); // sit and wait for each send to finish
+        }
+      }
+    } catch (error) {
+      console.log("Error: " + error);
     }
   }
 
