@@ -2,18 +2,14 @@ import { createObjectCsvWriter } from "csv-writer";
 import { ethers } from "hardhat";
 import { abi as INonfungiblePositionManagerABI } from "@uniswap/v3-periphery/artifacts/contracts/interfaces/INonfungiblePositionManager.sol/INonfungiblePositionManager.json";
 import { abi as SwapRouterABI } from "@uniswap/v3-periphery/artifacts/contracts/interfaces/ISwapRouter.sol/ISwapRouter.json";
-import { Token, Percent } from "@uniswap/sdk-core";
+import { Token } from "@uniswap/sdk-core";
 import ERC20ABI from "./abis/ERC20Abi.json";
 import veNewoABI from "./abis/veNewoABI.json";
 import path from "path";
 import fs from "fs";
-import {
-  nearestUsableTick,
-  NonfungiblePositionManager,
-  Pool,
-  Position,
-} from "@uniswap/v3-sdk";
+import { nearestUsableTick, Pool, Position } from "@uniswap/v3-sdk";
 
+// *** constants exports
 export interface Immutables {
   factory: Address;
   token0: Address;
@@ -22,25 +18,31 @@ export interface Immutables {
   tickSpacing: number;
   maxLiquidityPerTick: number;
 }
-
 export type Wallet = {
   address: String;
   mnemonic: any; // todo what is the type for this
   privateKey: String;
 };
-
 export const amountWallets = 10; // how many wallets to be created and seeded for providing liq / doing swaps
-export const swapAmountIn = "100"; // how many usdc to swap to newo
-export const amountEthSeed = "0.1"; // how much eth to give each new wallet
 export const positionManagerAddress =
   "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"; // uni v3 NonfungiblePositionManager
-export const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // uni v3 quoter
-export const swapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"; // uni v3 router
 export const usdcAddress = "0x68e9b61253E720aF5ec965A83509Afb6eA882a1D";
 export const newoAddress = "0x92FedF27cFD1c72052d7Ca105A7F5522E4D7403D";
 export const veNewoAddress = "0x3e0B3A5e3659CeAEEB8d6Dd190E7CBc0fCD749c4";
+export const provider = new ethers.providers.JsonRpcProvider(
+  `https://eth-goerli.g.alchemy.com/v2/${process.env.ALCHEMY_GORLI_KEY}`
+);
 
-export const poolImmutablesAbi = [
+// *** constants
+const chainId = 5; // gorli
+const poolAddress = "0xd4811d73938f131a6bf0e10ce281b05d6959fcbd"; // newo/usdc univ3 pool
+const usdcSwap = "1000"; // how many usdc to swap to newo
+const newoSwap = "5000"; // how many newo to swap to usdc
+const amountEthSeed = "0.05"; // how much eth to give each new wallet
+const amountNewoSeed = "100000"; // how much newo to give each new wallet
+const amountUsdcSeed = "10000"; // how much usdc to give each new wallet
+const approvalAmount = ethers.utils.parseEther("1000000000"); // 1 billion approval (if 18 dec token)
+const poolImmutablesAbi = [
   "function factory() external view returns (address)",
   "function token0() external view returns (address)",
   "function token1() external view returns (address)",
@@ -50,40 +52,28 @@ export const poolImmutablesAbi = [
   "function tickSpacing() external view returns (int24)",
   "function maxLiquidityPerTick() external view returns (uint128)",
 ];
-
-// provider and contracts consts -----------------------------------------------------------------------------
-export const provider = new ethers.providers.JsonRpcProvider(
-  `https://eth-goerli.g.alchemy.com/v2/${process.env.ALCHEMY_GORLI_KEY}`
-);
-export const nonfungiblePositionManagerContract = new ethers.Contract(
-  positionManagerAddress,
-  INonfungiblePositionManagerABI,
-  provider
-);
-export const swapRouterContract = new ethers.Contract(
-  swapRouterAddress,
-  SwapRouterABI,
-  provider
-);
-export const tokenContract0 = new ethers.Contract(
-  usdcAddress,
-  ERC20ABI,
-  provider
-);
-
-// constants used here
-const poolAddress = "0xd4811d73938f131a6bf0e10ce281b05d6959fcbd"; // newo/usdc univ3 pool
+const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // uni v3 quoter
+const swapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"; // uni v3 router
 const poolContract = new ethers.Contract(
   poolAddress,
   poolImmutablesAbi,
   provider
 );
-const approvalAmount = ethers.utils.parseEther("1000000000");
-const chainId = 5; // gorli
+const nonfungiblePositionManagerContract = new ethers.Contract(
+  positionManagerAddress,
+  INonfungiblePositionManagerABI,
+  provider
+);
+const swapRouterContract = new ethers.Contract(
+  swapRouterAddress,
+  SwapRouterABI,
+  provider
+);
+const tokenContract0 = new ethers.Contract(usdcAddress, ERC20ABI, provider);
 const NewoToken = new Token(chainId, newoAddress, 18, "NEWO", "NEWO");
 const UsdcToken = new Token(chainId, usdcAddress, 18, "USDC", "USDC");
 
-// actions
+// *** actions
 export async function getPoolData() {
   const [tickSpacing, fee, liquidity, slot0] = await Promise.all([
     poolContract.tickSpacing(),
@@ -101,6 +91,7 @@ export async function getPoolData() {
   };
 }
 
+//
 export async function handleCSV(newWallet: Wallet) {
   console.log("Handling new wallet CSV...");
 
@@ -197,38 +188,38 @@ export async function seedWallet(
     gasLimit: ethers.utils.hexlify(1000000),
   });
 
-  // send 100,000 NEWO
+  // send NEWO
   const approveNewo = await newo
     .connect(deployer)
     .approve(newWallet.address, approvalAmount); // approves extra
   await approveNewo.wait();
   const transferNewo = await newo
     .connect(deployer)
-    .transfer(newWallet.address, ethers.utils.parseEther("100000"));
+    .transfer(newWallet.address, ethers.utils.parseEther(amountNewoSeed));
   await transferNewo.wait();
 
-  // send 10,000 USDC
+  // send USDC
   const approveUSDC = await usdc.approve(newWallet.address, approvalAmount);
   await approveUSDC.wait();
   const transferUsdc = await usdc.transfer(
     newWallet.address,
-    ethers.utils.parseEther("10000")
+    ethers.utils.parseEther(amountUsdcSeed)
   );
   await transferUsdc.wait();
   console.log("----------");
 }
 
-export async function doSwap(newWallet: any, poolFee: any) {
+export async function doUsdcSwap(newWallet: any, poolFee: any, usdc: any) {
   // -----------------------------------------------------------------------------------------
   // swap in univ3 pool
-  console.log("Swapping ", swapAmountIn, " USDC to NEWO...");
-  const amountIn = ethers.utils.parseUnits(swapAmountIn, 18);
+  console.log("Swapping ", usdcSwap, " USDC to NEWO...");
+  const amountIn = ethers.utils.parseUnits(usdcSwap, 18);
 
-  // approve the router for usdc
-  const approvalResponse = await tokenContract0
+  // approve the router for usdc and newo
+  const approvalUsdcResponse = await usdc
     .connect(newWallet)
     .approve(swapRouterAddress, approvalAmount);
-  await approvalResponse.wait();
+  await approvalUsdcResponse.wait();
 
   const swapParams = {
     tokenIn: usdcAddress,
@@ -248,8 +239,7 @@ export async function doSwap(newWallet: any, poolFee: any) {
     .estimateGas.exactInputSingle(swapParams);
   const swapGasPrice = await newWallet.provider.getFeeData();
 
-  // wait for gasPrice of minting lp position
-  // todo maybe make these gas calculations global for each transaction
+  // wait for gasPrice of swap
   if (
     swapGasPrice.maxFeePerGas != null &&
     swapGasPrice.maxPriorityFeePerGas != null
@@ -258,10 +248,10 @@ export async function doSwap(newWallet: any, poolFee: any) {
 
     // check funds for gas
     if (swapBalance.lt(swapGas)) {
-      throw new Error(`Insufficient gas in new wallet for minting LP position`);
+      throw new Error(`Insufficient gas in wallet for swapping USDC -> NEWO`);
     }
 
-    // univ3 uses nft's for lp positions, mint the new position
+    // do the swap
     const swap = await swapRouterContract
       .connect(newWallet)
       .exactInputSingle(swapParams, {
@@ -269,7 +259,62 @@ export async function doSwap(newWallet: any, poolFee: any) {
         maxPriorityFeePerGas: swapGasPrice.maxPriorityFeePerGas,
       });
     const swapReceipt = await swap.wait();
-    // console.log("Adding liquidity result: ", swapReceipt);
+    console.log("----------");
+  }
+}
+
+export async function doNewoSwap(newWallet: any, poolFee: any, newo: any) {
+  // -----------------------------------------------------------------------------------------
+  // swap in univ3 pool
+  console.log("Swapping ", newoSwap, " NEWO to USDC...");
+  const amountIn = ethers.utils.parseUnits(newoSwap, 18);
+
+  // approve the router for usdc and newo
+  const approvalNewoResponse = await newo
+    .connect(newWallet)
+    .approve(swapRouterAddress, approvalAmount);
+  await approvalNewoResponse.wait();
+
+  const swapParams = {
+    tokenIn: newoAddress,
+    tokenOut: usdcAddress,
+    fee: poolFee,
+    recipient: newWallet.address,
+    deadline: Math.floor(Date.now() / 1000) + 60 * 10,
+    amountIn: amountIn,
+    amountOutMinimum: 0, // testnet only, vulnerable to front running
+    sqrtPriceLimitX96: 0,
+  };
+
+  // ensure test wallet has enough eth for the transactions
+  const swapBalance = await newWallet.getBalance();
+  const swapGasLimit = await swapRouterContract
+    .connect(newWallet)
+    .estimateGas.exactInputSingle(swapParams);
+  const swapGasPrice = await newWallet.provider.getFeeData();
+
+  // wait for gasPrice of swap
+  if (
+    swapGasPrice.maxFeePerGas != null &&
+    swapGasPrice.maxPriorityFeePerGas != null
+  ) {
+    const swapGas = swapGasPrice.maxFeePerGas.mul(swapGasLimit);
+
+    // check funds for gas
+    if (swapBalance.lt(swapGas)) {
+      throw new Error(
+        `Insufficient gas in new wallet for swapping NEWO -> USDC`
+      );
+    }
+
+    // do the swap
+    const swap = await swapRouterContract
+      .connect(newWallet)
+      .exactInputSingle(swapParams, {
+        maxFeePerGas: swapGasPrice.maxFeePerGas,
+        maxPriorityFeePerGas: swapGasPrice.maxPriorityFeePerGas,
+      });
+    const swapReceipt = await swap.wait();
     console.log("----------");
   }
 }

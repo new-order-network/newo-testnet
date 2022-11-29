@@ -7,7 +7,8 @@ import {
   usdcAddress,
   newoAddress,
   veNewoSeed,
-  doSwap,
+  doUsdcSwap,
+  doNewoSwap,
   provideLiquidity,
   seedWallet,
 } from "./helpers";
@@ -49,8 +50,7 @@ async function main() {
     await handleCSV(newWallet);
 
     // get pool data
-    const poolData: any = await getPoolData();
-    console.log("Pool Data: ", await poolData);
+    let poolData: any = await getPoolData();
 
     // seed wallet
     await seedWallet(newWallet, deployer, newo, usdc);
@@ -58,8 +58,14 @@ async function main() {
     // provide liquidity to simulate lp's
     await provideLiquidity(newWallet, newo, usdc, poolData);
 
-    // execute a swap to simulate swaps
-    await doSwap(newWallet, poolData.fee);
+    // execute USDC -> NEWO swap
+    await doUsdcSwap(newWallet, poolData.fee, usdc);
+
+    // get new pool data
+    poolData = await getPoolData();
+
+    // execute NEWO -> USDC swap
+    await doNewoSwap(newWallet, poolData.fee, newo);
 
     // lockup newo -> veNewO in a few wallets to simulate reward multiplier
     if (i < 3) {

@@ -6,7 +6,7 @@ Script for seeding a UniV3 testnet pool with liquidity and swaps
 
 - Creates a set amount of testnet wallets (recommend 10)
 - Seeds each new wallet with NEWO, USDC, and ETH
-- New wallets provide liquidity to pool & swap some USDC -> NEWO
+- New wallets provide liquidity to pool & swap some USDC -> NEWO -> USDC
 - 3/10 new wallets lock up NEWO into veNEWO
 
 ## Tools

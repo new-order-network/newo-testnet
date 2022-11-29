@@ -45,7 +45,9 @@ async function getFunds(allPKeys: any) {
 
         // check for enough funds including gas price
         if (balance.lt(sendPrice)) {
-          console.log("Insufficient funds in wallet for current gas price");
+          console.log(
+            "Insufficient funds in wallet for current gas price to send ETH back to deployer"
+          );
         } else {
           // subtract gas cost from wallet balance
           const amountToSend = balance.sub(sendPrice);
