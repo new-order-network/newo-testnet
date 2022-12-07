@@ -33,7 +33,7 @@ export const amountWallets = 3; // how many wallets to be created and seeded for
 export const amountVeNewoWallets = 2; // how many wallets to lock up NEWO into veNEWO to simulate rewards boosts
 export const positionManagerAddress =
   "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"; // uni v3 NonfungiblePositionManager
-export const poolAddress = "";
+export const poolAddress = ""; // if pool already exists, for ex if uniswap front end was used for it, put here
 export const provider = new ethers.providers.JsonRpcProvider(
   `https://eth-goerli.g.alchemy.com/v2/${process.env.ALCHEMY_GORLI_KEY}`
 );
