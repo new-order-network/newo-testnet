@@ -5,6 +5,7 @@ coverage.json
 typechain
 typechain-types
 scripts/testnetLpWallets.csv
+test/distributor.ts
 
 #Hardhat files
 cache

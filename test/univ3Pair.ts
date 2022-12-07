@@ -35,7 +35,7 @@ describe("NEWO/USDC UniV3", function () {
       const { usdc, deployer } = await loadFixture(deployPair);
 
       expect(await usdc.balanceOf(deployer.address)).to.equal(
-        ethers.utils.parseUnits("100000000", 18)
+        ethers.utils.parseUnits("100000000", 6)
       );
     });
 

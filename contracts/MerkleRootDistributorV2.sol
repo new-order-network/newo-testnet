@@ -31,7 +31,7 @@ contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
     // representing an amount of tokens owed to user.
     // The Merkle tree is assumed to have only increasing amounts: that is to say if a user can claim 1,
     // then after the amount associated in the Merkle tree for this token should be x > 1
-    bytes32 merkleRoot;
+    bytes32 public merkleRoot;
 
     // ================================== Events ===================================
 
@@ -49,12 +49,11 @@ contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
     error NotTrusted();
     error NotWhitelisted();
 
-    // ================================= Modifiers =================================
+    // // ================================= Modifiers =================================
 
     /// @notice Checks whether the `msg.sender` is a trusted address to change the Merkle root of the contract
     modifier onlyTrusted() {
-        _checkOwner();
-        if (trusted[msg.sender] != 1) revert NotTrusted();
+        if (owner() != msg.sender && trusted[msg.sender] != 1) revert NotTrusted();
         _;
     }
 

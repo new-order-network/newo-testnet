@@ -1,12 +1,15 @@
 ![Logo](https://neworder.network/assets/images/logo.png)
 
-# NEWO Göerli Deployment
+# NEWO Göerli UniswapV3 Pool Tool
 
-Script for seeding a UniV3 testnet pool with liquidity and swaps
+Script for creating & seeding a UniV3 testnet pool with liquidity and swaps
 
+- Deploys NEWO, USDC and veNEWO
+- If no `poolAddress` is given, creates a UniV3 NEWO/USDC pool
 - Creates a set amount of testnet wallets (recommend 10)
 - Seeds each new wallet with NEWO, USDC, and ETH
-- New wallets provide liquidity to pool & swap some USDC -> NEWO -> USDC
+- Each new walllet provides liquidity to pool
+- Each new wallet swaps some USDC -> NEWO -> USDC
 - 3/10 new wallets lock up NEWO into veNEWO
 
 ## Tools
@@ -14,10 +17,11 @@ Script for seeding a UniV3 testnet pool with liquidity and swaps
 - `deploy.ts`
   - deploys NEWO, USDC, veNEWO, MerkleDistributor and Multicall contracts on testnet
 - `seedTestnet.ts`
-  - seeds a Uniswap V3 Testnet Pool with liquidity and swaps
-  - locks up some NEWO in veNEWO to simulate rewards boosts
+  - create and/or seed a Uniswap V3 Testnet Pool with liquidity and swaps
+    - ![testnetLiquidityMath](https://www.dropbox.com/s/6bwitx8ngr07ioo/testnetLiqMath.png?dl=0)
+  - locks up some NEWO in veNEWO to simulate rewards boosts for testnet weekly rewards computer
 - `recoverTestnet.ts`
-  - recovers all funds from created testnet wallets
+  - recovers all ETH from created testnet wallets
 
 ## Prerequisites
 
@@ -60,3 +64,7 @@ To recover ETH from created testnet wallets
 ```bash
   npx hardhat run scripts/recoverTestnet.ts --network goerli
 ```
+
+## Notes
+
+- depending on your pool, you may have to flip the `token0` and `token1` in `lpParams` inside `provideLiquidity()`, will return a gas error when estimating gas if this is an issue

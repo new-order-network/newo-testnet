@@ -5,7 +5,7 @@ async function main() {
 
   // eth balance on gorli
   console.log(
-    "Starting wallet ETH Balance: ",
+    "Starting deployer ETH Balance: ",
     ethers.utils.formatEther(await deployer.getBalance())
   );
 
@@ -22,7 +22,7 @@ async function main() {
     await ethers.getContractFactory("VeNewO")
   ).deploy(
     deployer.address, // owner
-    "0x92FedF27cFD1c72052d7Ca105A7F5522E4D7403D", // staking token
+    newo.address, // staking token
     "604800", // gracePeriod
     "7776000", // minLockTime
     "94608000", // maxLockTime
@@ -54,13 +54,11 @@ async function main() {
 
   // eth balance on gorli
   console.log(
-    "Ending wallet ETH Balance: ",
+    "Ending deployer ETH Balance: ",
     ethers.utils.formatEther(await deployer.getBalance())
   );
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;

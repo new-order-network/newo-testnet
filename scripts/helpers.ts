@@ -2,46 +2,53 @@ import { createObjectCsvWriter } from "csv-writer";
 import { ethers } from "hardhat";
 import { abi as INonfungiblePositionManagerABI } from "@uniswap/v3-periphery/artifacts/contracts/interfaces/INonfungiblePositionManager.sol/INonfungiblePositionManager.json";
 import { abi as SwapRouterABI } from "@uniswap/v3-periphery/artifacts/contracts/interfaces/ISwapRouter.sol/ISwapRouter.json";
+import { abi as FACTORY_ABI } from "@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json";
+import { abi as UniswapV3PoolABI } from "@uniswap/v3-core/artifacts/contracts/UniswapV3Pool.sol/UniswapV3Pool.json";
 import { Token } from "@uniswap/sdk-core";
-import ERC20ABI from "./abis/ERC20Abi.json";
-import veNewoABI from "./abis/veNewoABI.json";
 import path from "path";
 import fs from "fs";
 import { nearestUsableTick, Pool, Position } from "@uniswap/v3-sdk";
+import { BigNumber } from "ethers";
+import bn from "bignumber.js";
 
-// *** constants exports
+// *** NOTE ***
+// you must enter the amount liquidity to provide from each wallet in provideLiquidity()
+// this will be different for each use case, a simple amount is `poolData.liquidity * 0.25` (25% of the existing liq)
+
+// *** exported constsnts
 export interface Immutables {
-  factory: Address;
-  token0: Address;
-  token1: Address;
+  factory: any;
+  token0: any;
+  token1: any;
   fee: number;
   tickSpacing: number;
   maxLiquidityPerTick: number;
 }
 export type Wallet = {
   address: String;
-  mnemonic: any; // todo what is the type for this
+  mnemonic: any;
   privateKey: String;
 };
-export const amountWallets = 10; // how many wallets to be created and seeded for providing liq / doing swaps
+export const amountWallets = 3; // how many wallets to be created and seeded for providing liq / doing swaps
+export const amountVeNewoWallets = 2; // how many wallets to lock up NEWO into veNEWO to simulate rewards boosts
 export const positionManagerAddress =
   "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"; // uni v3 NonfungiblePositionManager
-export const usdcAddress = "0x68e9b61253E720aF5ec965A83509Afb6eA882a1D";
-export const newoAddress = "0x92FedF27cFD1c72052d7Ca105A7F5522E4D7403D";
-export const veNewoAddress = "0x3e0B3A5e3659CeAEEB8d6Dd190E7CBc0fCD749c4";
+export const poolAddress = "";
 export const provider = new ethers.providers.JsonRpcProvider(
   `https://eth-goerli.g.alchemy.com/v2/${process.env.ALCHEMY_GORLI_KEY}`
 );
 
 // *** constants
 const chainId = 5; // gorli
-const poolAddress = "0xd4811d73938f131a6bf0e10ce281b05d6959fcbd"; // newo/usdc univ3 pool
-const usdcSwap = "1000"; // how many usdc to swap to newo
-const newoSwap = "5000"; // how many newo to swap to usdc
+const amountUsdcSwap = ethers.utils.parseUnits("5000", 6); // how much usdc to swap 6 dec
+const amountNewoSwap = ethers.utils.parseEther("10000"); // how much newo to swap 18 dec
 const amountEthSeed = "0.05"; // how much eth to give each new wallet
 const amountNewoSeed = "100000"; // how much newo to give each new wallet
-const amountUsdcSeed = "10000"; // how much usdc to give each new wallet
-const approvalAmount = ethers.utils.parseEther("1000000000"); // 1 billion approval (if 18 dec token)
+const amountUsdcSeed = "100000"; // how much usdc to give each new wallet
+const amountNewoLP = ethers.utils.parseEther("10000"); // how much newo to initialize LP with, leave blank if pool already exists
+const amountUsdcLP = ethers.utils.parseUnits("1000", 6); // how much usdc to initialize LP with, leave blank if pool already exists
+const newoApprovalAmount = ethers.utils.parseEther("1000000000"); // 1 billion approval (if 18 dec token)
+const usdcApprovalAmount = ethers.utils.parseUnits("1000000000", 6); // 1 billion approval (if 6 dec token)
 const poolImmutablesAbi = [
   "function factory() external view returns (address)",
   "function token0() external view returns (address)",
@@ -52,13 +59,7 @@ const poolImmutablesAbi = [
   "function tickSpacing() external view returns (int24)",
   "function maxLiquidityPerTick() external view returns (uint128)",
 ];
-const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // uni v3 quoter
 const swapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"; // uni v3 router
-const poolContract = new ethers.Contract(
-  poolAddress,
-  poolImmutablesAbi,
-  provider
-);
 const nonfungiblePositionManagerContract = new ethers.Contract(
   positionManagerAddress,
   INonfungiblePositionManagerABI,
@@ -69,19 +70,40 @@ const swapRouterContract = new ethers.Contract(
   SwapRouterABI,
   provider
 );
-const tokenContract0 = new ethers.Contract(usdcAddress, ERC20ABI, provider);
-const NewoToken = new Token(chainId, newoAddress, 18, "NEWO", "NEWO");
-const UsdcToken = new Token(chainId, usdcAddress, 18, "USDC", "USDC");
+
+// for creating the pool, need to get the ratio of both token amount going in
+function encodePriceSqrt(reserve1: String, reserve0: String) {
+  return BigNumber.from(
+    new bn(reserve1.toString())
+      .div(reserve0.toString())
+      .sqrt()
+      .multipliedBy(new bn(2).pow(96))
+      .integerValue(3)
+      .toString()
+  );
+}
 
 // *** actions
-export async function getPoolData() {
+export async function getPoolData(newPoolAddress?: any) {
+  console.log("Getting new pool data...");
+  const poolContract = new ethers.Contract(
+    newPoolAddress ?? poolAddress,
+    poolImmutablesAbi,
+    provider
+  );
+
   const [tickSpacing, fee, liquidity, slot0] = await Promise.all([
     poolContract.tickSpacing(),
     poolContract.fee(),
     poolContract.liquidity(),
     poolContract.slot0(),
   ]);
+  await tickSpacing.wait();
+  await fee.wait();
+  await liquidity.wait();
+  await slot0.wait();
 
+  console.log("-----");
   return {
     tickSpacing: tickSpacing,
     fee: fee,
@@ -150,16 +172,12 @@ export async function handleCSV(newWallet: Wallet) {
   }
 }
 
-// lock up newo into veNewo testnet contract to simulate veNewo multiplier rewards
-export async function veNewoSeed(newWallet: any, newo: any) {
-  console.log("Locking up newo into veNewo in the wallet...");
-
-  // don't need to do it like this but was having bizarre error with provider
-  const veNewo = new ethers.Contract(veNewoAddress, veNewoABI, newWallet);
+export async function veNewoSeed(newWallet: any, newo: any, veNewo: any) {
+  console.log("Locking up newo into veNewo...");
 
   const approval = await newo
     .connect(newWallet)
-    .approve(veNewo.address, approvalAmount);
+    .approve(veNewo.address, newoApprovalAmount);
   await approval.wait();
 
   // call deposit function of veNewo
@@ -168,6 +186,8 @@ export async function veNewoSeed(newWallet: any, newo: any) {
     newWallet.address
   );
   await shares.wait();
+
+  console.log("-----");
 }
 
 export async function seedWallet(
@@ -178,7 +198,6 @@ export async function seedWallet(
 ) {
   // -----------------------------------------------------------------------------------------
   // give eth, newo, usdc to each new wallet
-  const approvalAmount = ethers.utils.parseEther("10000000");
   console.log("Seeding new wallet...");
 
   // 0.05 gorli eth, 0.5 gorli eth total
@@ -191,7 +210,7 @@ export async function seedWallet(
   // send NEWO
   const approveNewo = await newo
     .connect(deployer)
-    .approve(newWallet.address, approvalAmount); // approves extra
+    .approve(newWallet.address, newoApprovalAmount); // approves extra
   await approveNewo.wait();
   const transferNewo = await newo
     .connect(deployer)
@@ -199,35 +218,43 @@ export async function seedWallet(
   await transferNewo.wait();
 
   // send USDC
-  const approveUSDC = await usdc.approve(newWallet.address, approvalAmount);
+  const approveUSDC = await usdc.approve(newWallet.address, usdcApprovalAmount);
   await approveUSDC.wait();
   const transferUsdc = await usdc.transfer(
     newWallet.address,
     ethers.utils.parseEther(amountUsdcSeed)
   );
   await transferUsdc.wait();
-  console.log("----------");
+  console.log("-----");
 }
 
-export async function doUsdcSwap(newWallet: any, poolFee: any, usdc: any) {
+export async function doUsdcSwap(
+  newWallet: any,
+  poolFee: any,
+  newo: any,
+  usdc: any
+) {
   // -----------------------------------------------------------------------------------------
   // swap in univ3 pool
-  console.log("Swapping ", usdcSwap, " USDC to NEWO...");
-  const amountIn = ethers.utils.parseUnits(usdcSwap, 18);
+  console.log(
+    "Swapping ",
+    ethers.utils.formatUnits(amountUsdcSwap, 6),
+    " USDC to NEWO..."
+  );
 
   // approve the router for usdc and newo
   const approvalUsdcResponse = await usdc
     .connect(newWallet)
-    .approve(swapRouterAddress, approvalAmount);
+    .approve(swapRouterAddress, usdcApprovalAmount);
   await approvalUsdcResponse.wait();
 
   const swapParams = {
-    tokenIn: usdcAddress,
-    tokenOut: newoAddress,
+    tokenIn: usdc.address,
+    tokenOut: newo.address,
     fee: poolFee,
     recipient: newWallet.address,
     deadline: Math.floor(Date.now() / 1000) + 60 * 10,
-    amountIn: amountIn,
+    amountIn: amountUsdcSwap,
     amountOutMinimum: 0,
     sqrtPriceLimitX96: 0,
   };
@@ -258,30 +285,38 @@ export async function doUsdcSwap(newWallet: any, poolFee: any, usdc: any) {
         maxFeePerGas: swapGasPrice.maxFeePerGas,
         maxPriorityFeePerGas: swapGasPrice.maxPriorityFeePerGas,
       });
-    const swapReceipt = await swap.wait();
+    await swap.wait();
     console.log("----------");
   }
 }
 
-export async function doNewoSwap(newWallet: any, poolFee: any, newo: any) {
+export async function doNewoSwap(
+  newWallet: any,
+  poolFee: any,
+  newo: any,
+  usdc: any
+) {
   // -----------------------------------------------------------------------------------------
   // swap in univ3 pool
-  console.log("Swapping ", newoSwap, " NEWO to USDC...");
-  const amountIn = ethers.utils.parseUnits(newoSwap, 18);
+  console.log(
+    "Swapping ",
+    ethers.utils.formatEther(amountNewoSwap),
+    " NEWO to USDC..."
+  );
 
   // approve the router for usdc and newo
   const approvalNewoResponse = await newo
     .connect(newWallet)
-    .approve(swapRouterAddress, approvalAmount);
+    .approve(swapRouterAddress, newoApprovalAmount);
   await approvalNewoResponse.wait();
 
   const swapParams = {
-    tokenIn: newoAddress,
-    tokenOut: usdcAddress,
+    tokenIn: newo.address,
+    tokenOut: usdc.address,
     fee: poolFee,
     recipient: newWallet.address,
     deadline: Math.floor(Date.now() / 1000) + 60 * 10,
-    amountIn: amountIn,
+    amountIn: amountNewoSwap,
     amountOutMinimum: 0, // testnet only, vulnerable to front running
     sqrtPriceLimitX96: 0,
   };
@@ -314,9 +349,58 @@ export async function doNewoSwap(newWallet: any, poolFee: any, newo: any) {
         maxFeePerGas: swapGasPrice.maxFeePerGas,
         maxPriorityFeePerGas: swapGasPrice.maxPriorityFeePerGas,
       });
-    const swapReceipt = await swap.wait();
+    await swap.wait();
     console.log("----------");
   }
+}
+
+export async function createPool(deployer: any, newo: any, usdc: any) {
+  bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 });
+
+  // approve liq
+  console.log("Approving newo to new pool...");
+  const liqNewoApprove = await newo
+    .connect(deployer)
+    .approve(positionManagerAddress, newoApprovalAmount);
+  await liqNewoApprove.wait();
+  console.log("Approving usdc to new pool...");
+  const liqUsdcApprove = await usdc
+    .connect(deployer)
+    .approve(positionManagerAddress, usdcApprovalAmount);
+  await liqUsdcApprove.wait();
+
+  // create the pool with the deployer wallet
+  console.log("Creating the new liquidity pool...");
+  const newPool = await nonfungiblePositionManagerContract
+    .connect(deployer)
+    .createAndInitializePoolIfNecessary(
+      newo.address,
+      usdc.address,
+      500,
+      encodePriceSqrt(
+        BigNumber.from(amountNewoLP).toString(),
+        BigNumber.from(amountUsdcLP).toString()
+      ),
+      {
+        gasLimit: 1000000,
+      }
+    );
+  await newPool.wait();
+
+  // get pool address, can't return straight from EVM
+  const uniswapV3Factory = new ethers.Contract(
+    "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+    FACTORY_ABI,
+    deployer
+  );
+  const poolAddress = new ethers.Contract(
+    await uniswapV3Factory.getPool(newo.address, usdc.address, 500),
+    UniswapV3PoolABI,
+    deployer
+  );
+
+  console.log("-----");
+  return poolAddress;
 }
 
 export async function provideLiquidity(
@@ -325,6 +409,9 @@ export async function provideLiquidity(
   usdc: any,
   poolData: any
 ) {
+  const NewoToken = new Token(chainId, newo.address, 18);
+  const UsdcToken = new Token(chainId, usdc.address, 18);
+
   const NEWO_USDC_POOL = new Pool(
     NewoToken,
     UsdcToken,
@@ -336,7 +423,7 @@ export async function provideLiquidity(
 
   const position = new Position({
     pool: NEWO_USDC_POOL,
-    liquidity: poolData.liquidity * 0.002, // how much liquidity to add, 0.0002 times the
+    liquidity: poolData.liquidity * 0.25, // how much liquidity to add, 4 wallets so each gives 25% of existing liq
     tickLower:
       nearestUsableTick(poolData.tick, poolData.tickSpacing) -
       poolData.tickSpacing * 2,
@@ -350,20 +437,21 @@ export async function provideLiquidity(
 
   // -----------------------------------------------------------------------------------------
   // provide liquidity to uni v3 pool
-  console.log("Approving liquidity to pool...");
+  console.log("Approving liquidity to existing pool...");
   const liqNewoApprove = await newo
     .connect(newWallet)
-    .approve(positionManagerAddress, approvalAmount);
+    .approve(positionManagerAddress, newoApprovalAmount);
   await liqNewoApprove.wait();
   const liqUsdcApprove = await usdc
     .connect(newWallet)
-    .approve(positionManagerAddress, approvalAmount);
+    .approve(positionManagerAddress, usdcApprovalAmount);
   await liqUsdcApprove.wait();
 
   // prepare params for minting new liquidity position
+  // flip the tokens depending on the pool or will have estimate gas error
   const lpParams = {
-    token0: usdc.address,
-    token1: newo.address,
+    token0: newo.address,
+    token1: usdc.address,
     fee: poolData.fee,
     tickLower: position.tickLower,
     tickUpper: position.tickUpper,
@@ -376,8 +464,6 @@ export async function provideLiquidity(
     deadline: Math.floor(Date.now() / 1000) + 120 * 10,
   };
 
-  console.log("Lp params: ", lpParams);
-
   // ensure test wallet has enough eth for the transactions
   const newWalletBalance = await newWallet.getBalance();
   console.log("Estimating gas cost of minting lp position...");
@@ -387,7 +473,6 @@ export async function provideLiquidity(
   const lpGasPrice = await newWallet.provider.getFeeData();
 
   // wait for gasPrice of minting lp position
-  // todo maybe make these gas calculations global for each transaction
   if (
     lpGasPrice.maxFeePerGas != null &&
     lpGasPrice.maxPriorityFeePerGas != null
@@ -399,7 +484,7 @@ export async function provideLiquidity(
       throw new Error(`Insufficient gas in new wallet for minting LP position`);
     }
 
-    console.log("Providing liquidity to pool...");
+    console.log("Minting lp position...");
     // univ3 uses nft's for lp positions, mint the new position
     const mintPosition = await nonfungiblePositionManagerContract
       .connect(newWallet)
@@ -408,8 +493,7 @@ export async function provideLiquidity(
         maxPriorityFeePerGas: lpGasPrice.maxPriorityFeePerGas,
         gasLimit: ethers.utils.hexlify(1000000),
       });
-    const mintReceipt = await mintPosition.wait();
-    // console.log("Adding liquidity result: ", mintReceipt);
-    console.log("----------");
+    await mintPosition.wait();
+    console.log("-----");
   }
 }
