@@ -18,7 +18,7 @@ Script for creating & seeding a UniV3 testnet pool with liquidity and swaps
   - deploys NEWO, USDC, veNEWO, MerkleDistributor and Multicall contracts on testnet
 - `seedTestnet.ts`
   - create and/or seed a Uniswap V3 Testnet Pool with liquidity and swaps
-    - ![testnetLiquidityMath](https://www.dropbox.com/s/6bwitx8ngr07ioo/testnetLiqMath.png?dl=0)
+    - ![testnetLiquidityMath](https://www.dropbox.com/s/6bwitx8ngr07ioo/testnetLiqMath.png)
   - locks up some NEWO in veNEWO to simulate rewards boosts for testnet weekly rewards computer
 - `recoverTestnet.ts`
   - recovers all ETH from created testnet wallets
