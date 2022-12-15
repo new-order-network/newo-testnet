@@ -10,8 +10,21 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 /// @title MerkleRootDistributor
 /// @notice Allows the DAO to distribute rewards through Merkle Roots
 /// @author Angle Core Team
+struct MerkleTree {
+    // Root of a Merkle tree which leaves are (address user, address token, uint amount)
+    // representing an amount of tokens owed to user.
+    // The Merkle tree is assumed to have only increasing amounts: that is to say if a user can claim 1,
+    // then after the amount associated in the Merkle tree for this token should be x > 1
+    bytes32 merkleRoot;
+    // Ipfs hash of the tree data
+    bytes32 ipfsHash;
+}
+
 contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    /// @notice Tree of claimable tokens through this contract
+    MerkleTree public tree;
 
     /// @notice Mapping user -> token -> amount to track claimed amounts
     mapping(address => mapping(address => uint256)) public claimed;
@@ -27,17 +40,11 @@ contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
 
     uint256[44] private __gap;
 
-    // Root of a Merkle tree which leaves are (address user, address token, uint amount)
-    // representing an amount of tokens owed to user.
-    // The Merkle tree is assumed to have only increasing amounts: that is to say if a user can claim 1,
-    // then after the amount associated in the Merkle tree for this token should be x > 1
-    bytes32 public merkleRoot;
-
     // ================================== Events ===================================
 
     event TrustedToggled(address indexed eoa, bool trust);
     event Recovered(address indexed token, address indexed to, uint256 amount);
-    event TreeUpdated(bytes32 merkleRoot);
+    event TreeUpdated(bytes32 merkleRoot, bytes32 ipfsHash);
     event Claimed(address user, address token, uint256 amount);
     event WhitelistToggled(address user, bool isEnabled);
     event OperatorToggled(address user, address operator, bool isWhitelisted);
@@ -124,9 +131,9 @@ contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
     }
 
     /// @notice Updates Merkle Tree
-    function updateTree(bytes32 _merkleRoot) external onlyTrusted {
-        merkleRoot = _merkleRoot;
-        emit TreeUpdated(_merkleRoot);
+    function updateTree(MerkleTree calldata _tree) external onlyTrusted {
+        tree = _tree;
+        emit TreeUpdated(_tree.merkleRoot, _tree.ipfsHash);
     }
 
     /// @notice Toggles permissionless claiming for a given user
@@ -170,6 +177,6 @@ contract MerkleRootDistributorV2 is Initializable, OwnableUpgradeable {
                 currentHash = keccak256(abi.encode(proof[i], currentHash));
             }
         }
-        return currentHash == merkleRoot;
+        return currentHash == tree.merkleRoot;
     }
 }

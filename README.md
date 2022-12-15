@@ -64,7 +64,3 @@ To recover ETH from created testnet wallets
 ```bash
   npx hardhat run scripts/recoverTestnet.ts --network goerli
 ```
-
-## Notes
-
-- depending on your pool, you may have to flip the `token0` and `token1` in `lpParams` inside `provideLiquidity()`, will return a gas error when estimating gas if this is an issue

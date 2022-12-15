@@ -1,10 +1,10 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@openzeppelin/hardhat-upgrades";
-require("dotenv").config(); // for pulling .env variables
+import * as tdly from "@tenderly/hardhat-tenderly";
+import "dotenv/config";
 
-// add wallet key here
-const { PRIVATE_KEY, ALCHEMY_GORLI_KEY } = process.env;
+tdly.setup();
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -19,9 +19,25 @@ const config: HardhatUserConfig = {
   networks: {
     goerli: {
       chainId: 5,
-      url: "https://eth-goerli.g.alchemy.com/v2/" + ALCHEMY_GORLI_KEY,
-      accounts: [PRIVATE_KEY ?? ""],
+      url:
+        "https://eth-goerli.g.alchemy.com/v2/" + process.env.ALCHEMY_GORLI_KEY,
+      accounts: [process.env.PRIVATE_KEY ?? ""],
     },
+    hardhat: {
+      forking: {
+        url:
+          "https://eth-mainnet.g.alchemy.com/v2/" +
+          process.env.ALCHEMY_MAINFORK_KEY,
+        blockNumber: 16158835,
+      },
+    },
+    local: {
+      url: "http://127.0.0.1:8545",
+    },
+  },
+  tenderly: {
+    project: "newoTestnet",
+    username: "jamaka",
   },
 };
 

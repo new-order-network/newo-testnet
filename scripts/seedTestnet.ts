@@ -11,7 +11,9 @@ import {
   provideLiquidity,
   poolAddress,
   seedWallet,
+  seedPool,
   createPool,
+  delay,
 } from "./helpers";
 
 require("dotenv").config(); // for pulling .env variables
@@ -35,14 +37,17 @@ async function main() {
     ethers.utils.formatEther(await deployer.getBalance())
   );
   console.log("--------------------------------------------------------");
+  await delay();
+
   // *** deploy NEWO, USDC and veNEWO
   const newo = await (
     await ethers.getContractFactory("NEWO")
   ).deploy("Newo", "Newo", "800000000");
+  await delay();
+
   const usdc = await (await ethers.getContractFactory("USDC")).deploy();
-  console.log("NEWO address: ", newo.address);
-  console.log("USDC address: ", usdc.address);
-  console.log("-----");
+  await delay();
+
   const veNewo = await (
     await ethers.getContractFactory("VeNewO")
   ).deploy(
@@ -56,26 +61,35 @@ async function main() {
     0, // minPenalty
     864000 // epoch
   );
+  // await delay();
+  console.log("NEWO address: ", newo.address);
+  console.log("USDC address: ", usdc.address);
+  console.log("veNewo address: ", veNewo.address);
+  console.log("-----");
+  // console.log(veNewo.functions);
+  await delay();
 
   // *** create liquidity pool if none exists yet
   let poolData: any;
+  let newPool: any;
   if (!poolAddress) {
-    const newPool = await createPool(deployer, newo, usdc);
-    console.log("NEWO/USDC Pool created at: ", newPool.address);
-    console.log("-----");
+    newPool = await createPool(deployer, newo, usdc);
 
     // get pool data with newPool address
     poolData = await getPoolData(newPool.address);
+
+    // seed the pool
+    await seedPool(deployer, newo, usdc, poolData);
   } else {
     // get pool data
     poolData = await getPoolData();
   }
 
-  // *** per new wallet
+  // *** provide liquidity per new wallet (0,1,2,3,4)
   for (let i = 0; i < amountWallets; i++) {
     const newWallet = ethers.Wallet.createRandom().connect(provider); // creates a new wallet
-    console.log("New Wallet ", i + 1, " created: ", newWallet.address);
-    console.log("----------");
+    console.log("New Wallet ", i, " created: ", newWallet.address);
+    console.log("-----");
 
     // *** add wallet to CSV
     await handleCSV(newWallet);
@@ -83,21 +97,57 @@ async function main() {
     // *** seed wallet
     await seedWallet(newWallet, deployer, newo, usdc);
 
-    await provideLiquidity(newWallet, newo, usdc, poolData);
+    console.log("Starting balances of wallet: ");
+    console.log(
+      "NEWO: ",
+      ethers.utils.formatEther(await newo.balanceOf(newWallet.address))
+    );
+    console.log(
+      "USDC: ",
+      ethers.utils.formatUnits(await usdc.balanceOf(newWallet.address), 6)
+    );
+    console.log(
+      "veNEWO: ",
+      ethers.utils.formatEther(await veNewo.balanceOf(newWallet.address))
+    );
+    console.log("-----");
 
-    // *** execute USDC -> NEWO swap
-    await doUsdcSwap(newWallet, poolData.fee, newo, usdc);
+    // *** only provide liq from wallets 0, 1, 2
+    if (i < 3) {
+      // *** get new pool data
+      poolData = await getPoolData(newPool.address);
 
-    // *** get new pool data
-    poolData = await getPoolData();
+      await provideLiquidity(newWallet, newo, usdc, poolData);
 
-    // *** execute NEWO -> USDC swap
-    await doNewoSwap(newWallet, poolData.fee, newo, usdc);
+      // *** lockup newo -> veNewO from new wallets 0, 1
+      if (i < 2) {
+        await veNewoSeed(newWallet, newo, veNewo);
+      }
+    } else {
+      // *** only do swaps from wallets 3, 4
 
-    // *** lockup newo -> veNewO in a few wallets to simulate reward multiplier
-    if (i < amountVeNewoWallets) {
-      await veNewoSeed(newWallet, newo, veNewo);
+      // *** execute USDC -> NEWO swap
+      await doUsdcSwap(newWallet, poolData.fee, newo, usdc);
+
+      // *** get new pool data
+      poolData = await getPoolData(newPool.address);
+
+      // *** execute NEWO -> USDC swap
+      await doNewoSwap(newWallet, poolData.fee, newo, usdc);
     }
+    console.log("Final balances of wallet: ");
+    console.log(
+      "NEWO: ",
+      ethers.utils.formatEther(await newo.balanceOf(newWallet.address))
+    );
+    console.log(
+      "USDC: ",
+      ethers.utils.formatUnits(await usdc.balanceOf(newWallet.address), 6)
+    );
+    console.log(
+      "veNEWO: ",
+      ethers.utils.formatEther(await veNewo.balanceOf(newWallet.address))
+    );
     console.log("--------------------------------------------------------");
   }
 

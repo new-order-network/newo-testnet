@@ -24,6 +24,11 @@
       "address": "0xa52cC093cA3DdF7a91575569CE9f672EC02B2CDe",
       "txHash": "0xd6ee97426c3aa86350c32da73c5811c0fcb5f4fe9a8c8eed386d3d2d09013a87",
       "kind": "transparent"
+    },
+    {
+      "address": "0xde6F60c3BDf5392801DD2aA121c552D8E831bE37",
+      "txHash": "0x298d96ba7d47ad61046b6f9155858056130dd65a445a1aee4a9957045ff414c5",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -575,6 +580,164 @@
           "t_mapping(t_address,t_uint256)": {
             "label": "mapping(address => uint256)",
             "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "fff8cbaf3eb51cb3cf4b7601db736d7b79a8047983c893687c7fae553985f698": {
+      "address": "0x941f33Cc8bcE0B699435966d6eBEEF8c50D9D714",
+      "txHash": "0xd64b8bf4fdf85285c8971662c65cf872ec21505fd18984438b8cc5c1d36bd5ad",
+      "layout": {
+        "solcVersion": "0.8.17",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "tree",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_struct(MerkleTree)1032_storage",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:27"
+          },
+          {
+            "label": "claimed",
+            "offset": 0,
+            "slot": "103",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:30"
+          },
+          {
+            "label": "trusted",
+            "offset": 0,
+            "slot": "104",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:33"
+          },
+          {
+            "label": "whitelist",
+            "offset": 0,
+            "slot": "105",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:36"
+          },
+          {
+            "label": "operators",
+            "offset": 0,
+            "slot": "106",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:39"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "107",
+            "type": "t_array(t_uint256)44_storage",
+            "contract": "MerkleRootDistributorV2",
+            "src": "contracts/MerkleRootDistributorV2.sol:41"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)44_storage": {
+            "label": "uint256[44]",
+            "numberOfBytes": "1408"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(MerkleTree)1032_storage": {
+            "label": "struct MerkleTree",
+            "members": [
+              {
+                "label": "merkleRoot",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "ipfsHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
           },
           "t_uint256": {
             "label": "uint256",

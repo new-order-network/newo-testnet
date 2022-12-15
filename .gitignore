@@ -6,6 +6,10 @@ typechain
 typechain-types
 scripts/testnetLpWallets.csv
 test/distributor.ts
+# hardhat-tenderly plugin
+deployments
+EOF
+tenderly.yaml
 
 #Hardhat files
 cache
