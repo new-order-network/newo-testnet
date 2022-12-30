@@ -47,6 +47,8 @@ To install the packages
 
 ## Deployment
 
+Ensure the correct provider and settings are set in `helpers.ts`
+
 To deploy NEWO, USDC, veNEWO, MerkleDistributor, and MultiCall contracts on testnet
 
 ```bash
