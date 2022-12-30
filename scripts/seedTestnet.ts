@@ -79,7 +79,7 @@ async function main() {
     poolData = await getPoolData(newPool.address);
 
     // seed the pool
-    await seedPool(deployer, newo, usdc, poolData);
+    await seedPool(deployer, newo, usdc, poolData, newPool);
   } else {
     // get pool data
     poolData = await getPoolData();
@@ -155,6 +155,17 @@ async function main() {
   console.log(
     "Ending deployer ETH Balance: ",
     ethers.utils.formatEther(await deployer.getBalance())
+  );
+  console.log("Ending pool balance: ");
+  console.log(
+    "NEWO: ",
+    ethers.utils.formatEther(
+      await newo.balanceOf(newPool.address) // todo add poolAddress here if exists
+    )
+  );
+  console.log(
+    "USDC: ",
+    ethers.utils.formatUnits(await usdc.balanceOf(newPool.address), 6)
   );
   console.log(
     "------------------------------------------------------------------"

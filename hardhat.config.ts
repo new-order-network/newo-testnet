@@ -24,11 +24,17 @@ const config: HardhatUserConfig = {
       accounts: [process.env.PRIVATE_KEY ?? ""],
     },
     hardhat: {
+      // forking: {
+      //   url:
+      //     "https://eth-mainnet.g.alchemy.com/v2/" +
+      //     process.env.ALCHEMY_MAINFORK_KEY,
+      //   blockNumber: 16158835,
+      // },
       forking: {
         url:
-          "https://eth-mainnet.g.alchemy.com/v2/" +
-          process.env.ALCHEMY_MAINFORK_KEY,
-        blockNumber: 16158835,
+          "https://eth-goerli.g.alchemy.com/v2/" +
+          process.env.ALCHEMY_GORLI_KEY,
+        blockNumber: 8223572,
       },
     },
     local: {

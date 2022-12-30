@@ -7,14 +7,18 @@ import { abi as UniswapV3PoolABI } from "@uniswap/v3-core/artifacts/contracts/Un
 import { Token } from "@uniswap/sdk-core";
 import path from "path";
 import fs from "fs";
-import { nearestUsableTick, Pool, Position, TickMath } from "@uniswap/v3-sdk";
+import {
+  nearestUsableTick,
+  Pool,
+  Position,
+  encodeSqrtRatioX96,
+} from "@uniswap/v3-sdk";
 import { BigNumber } from "ethers";
 import bn from "bignumber.js";
 const { ALCHEMY_GORLI_KEY } = process.env;
 
 // *** NOTE ***
-// you must enter the amount liquidity to provide from each wallet in provideLiquidity()
-// this will be different for each use case, a simple amount is `poolData.liquidity * 0.25` (25% of the existing liq)
+// price in createPool is hardset but can be changed for diff token prices
 
 // *** exported constsnts
 export interface Immutables {
@@ -34,6 +38,7 @@ export type Wallet = {
 export const provider = new ethers.providers.JsonRpcProvider(
   "https://eth-goerli.g.alchemy.com/v2/" + ALCHEMY_GORLI_KEY
 ); // for testing with goerli testnet
+
 // export const provider = new ethers.providers.JsonRpcProvider(
 //   "http://127.0.0.1:8545/"
 // ); // for testing with hardhat mainnet fork
@@ -49,22 +54,19 @@ export const delay = () => new Promise((res) => setTimeout(res, 2000));
 // *** constants
 const chainId = 5; // gorli
 
-// this is result of complicated univ3 math, using a token1 amount of token0, see uni docs
-// const amountLiquiditySeed = "1000000000000000000000000"; // 1 million liq start if 2 18 dec tokens
-const amountLiquiditySeed = "1000000000000000000"; // if usdc is 6 tokens
+const amountLPSeedUSDC = 10000; // how much usdc to seed pool with
+// const amountLPSeedUSDC = 1000; // how much usdc to seed pool with
 
 const amountEthSeed = ethers.utils.parseEther("0.05"); // how much eth to give each new wallet
-const amountNewoSeed = ethers.utils.parseEther("10000"); // how much newo to give each new wallet
-// const amountUsdcSeed = ethers.utils.parseEther("10000"); // how much usdc to give each new wallet
-const amountUsdcSeed = ethers.utils.parseUnits("10000", 6); // 6 decimal usdc
+const amountNewoSeed = ethers.utils.parseEther("100000"); // how much newo to give each new wallet
+const amountUsdcSeed = ethers.utils.parseUnits("100000", 6); // 6 decimal usdc
 
 const amountVeNewoLock = ethers.utils.parseEther("1000"); // how much newo to lock into veNewo
 
 // const amountUsdcSwap = ethers.utils.parseEther("5000"); // how much usdc to swap
-const amountUsdcSwap = ethers.utils.parseUnits("5000", 6); // 6 decimal usdc
-const amountNewoSwap = ethers.utils.parseEther("10000"); // how much newo to swap 18 dec
+const amountUsdcSwap = ethers.utils.parseUnits("4000", 6); // 6 decimal usdc
+const amountNewoSwap = ethers.utils.parseEther("1000"); // how much newo to swap 18 dec
 const newoApprovalAmount = ethers.utils.parseEther("1000000000"); // 1 billion approval (if 18 dec token)
-// const usdcApprovalAmount = ethers.utils.parseEther("1000000000"); // 1 billion approval
 const usdcApprovalAmount = ethers.utils.parseUnits("100000000", 6); // 6 decimal usdc
 
 const poolImmutablesAbi = [
@@ -90,22 +92,133 @@ const swapRouterContract = new ethers.Contract(
 );
 
 // for creating the pool, need to get the ratio of both token amount going in
-function encodePriceSqrt(reserve1: String, reserve0: String) {
-  return BigNumber.from(
-    new bn(reserve1.toString())
-      .div(reserve0.toString())
-      .sqrt()
-      .multipliedBy(new bn(2).pow(96))
-      .integerValue(3)
-      .toString()
-  );
-}
+// function encodePriceSqrt(reserve1: String, reserve0: String) {
+//   return BigNumber.from(
+//     new bn(reserve1.toString())
+//       .div(reserve0.toString())
+//       .sqrt()
+//       .multipliedBy(new bn(2).pow(96))
+//       .integerValue(3)
+//       .toString()
+//   );
+// }
 
-function tokenCompare(token0: string, token1: string) {
-  const t0 = token0.toLowerCase() < token1.toLowerCase() ? token0 : token1;
-  const t1 = token0.toLowerCase() < token1.toLowerCase() ? token1 : token0;
+function tokenCompare(token0: Token, token1: Token) {
+  const t0 =
+    token0.address.toLowerCase() < token1.address.toLowerCase()
+      ? token0
+      : token1;
+  const t1 =
+    token0.address.toLowerCase() < token1.address.toLowerCase()
+      ? token1
+      : token0;
 
   return [t0, t1];
+}
+
+// function getToken0Amount(
+//   amount1: any,
+//   price: any,
+//   tickHigher: any,
+//   tickLower: any
+// ) {
+//   const L =
+//     (amount1 * Math.sqrt(price) * Math.sqrt(tickHigher)) /
+//     (Math.sqrt(tickLower) - Math.sqrt(price));
+
+//   const amount0 = L * (Math.sqrt(price) - Math.sqrt(tickLower));
+
+//   return amount0;
+// }
+
+// function tickToPriceCustom(
+//   tick: any,
+//   token0Decimals: any,
+//   token1Decimals: any
+// ) {
+//   let price0 = 1.0001 ** tick / 10 ** (token1Decimals - token0Decimals);
+//   return 1 / price0;
+// }
+
+// function getToken0Amounts(
+//   token1Amount: number,
+//   currentTick: number,
+//   tickLow: number,
+//   tickHigh: number,
+//   token0: number,
+//   token1: number
+// ) {
+//   let Pa = tickToPrice(tickHigh, token0Decimal, token1Decimal);
+//   let Pb = tickToPriceCustom(tickLow, token0Decimal, token1Decimal);
+//   let Price = tickToPriceCustom(currentTick, token0Decimal, token1Decimal);
+
+//   let L =
+//     token1Amount *
+//     ((Math.sqrt(Price) * Math.sqrt(Pb)) / (Math.sqrt(Pb) - Math.sqrt(Price)));
+//   console.log(L);
+
+//   let x = Math.floor(L * (Math.sqrt(Price) - Math.sqrt(Pa)));
+//   console.log(x);
+
+//   let amountNEWO = Math.floor(
+//     x / 10 ** Math.abs(token0Decimal - token1Decimal)
+//   );
+//   let amountUSDC = amountNEWO / 10 ** token0Decimal;
+
+//   console.log(amountNEWO);
+//   console.log(amountUSDC);
+
+//   return [amountNEWO, amountUSDC, L];
+// }
+
+// function getLiquidity(
+//   token0Amount: number,
+//   token1Amount: number,
+//   token0: Token,
+//   token1: Token,
+//   currentTick: number
+// ) {
+//   let P = tickToPrice(token0, token1, currentTick);
+//   const Pa = P.numerator;
+//   const Pb = P.scalar.denominator;
+//   const Price = encodeSqrtRatioX96(30, 1);
+
+//   let Lx =
+//     token0Amount *
+//     ((Math.sqrt(Price) * Math.sqrt(Pb)) / (Math.sqrt(Pb) - Math.sqrt(Price)));
+//   let Ly = token1Amount / (Math.sqrt(Price) - Math.sqrt(Pa));
+
+//   let L = Math.max(Lx, Ly);
+
+//   return L;
+// }
+
+function tickToPriceCustom(
+  tick: number,
+  token0Decimals: number,
+  token1Decimals: number
+) {
+  let price0 = 1.0001 ** tick / 10 ** (token1Decimals - token0Decimals);
+  return 1 / price0;
+}
+
+function getLiquidity(
+  token1Amount: number,
+  currentTick: number,
+  tickLow: number,
+  tickHigh: number,
+  token0Decimal: number,
+  token1Decimal: number
+) {
+  let Pa = tickToPriceCustom(tickHigh, token0Decimal, token1Decimal);
+  let Pb = tickToPriceCustom(tickLow, token0Decimal, token1Decimal);
+  let Price = tickToPriceCustom(currentTick, token0Decimal, token1Decimal);
+
+  let Ly = token1Amount / (Math.sqrt(Price) - Math.sqrt(Pa));
+
+  // const amount0 = Ly * (Math.sqrt(Pb) - Math.sqrt(Pa));
+
+  return Math.floor(Ly);
 }
 
 // *** actions
@@ -387,22 +500,49 @@ export async function createPool(deployer: any, newo: any, usdc: any) {
   bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 });
   console.log("Creating the new liquidity pool...");
 
-  const [t0, t1] = tokenCompare(newo.address, usdc.address);
+  const NewoToken = new Token(chainId, newo.address, 18, "NEWO", "NEWO");
+  const UsdcToken = new Token(chainId, usdc.address, 6, "USDC", "USDC"); // 6 decimal usdc
 
-  // start pool at similar price to real life
-  // reserve1 / reserve0
-  const price = encodePriceSqrt(
-    ethers.utils.parseEther("43000000").toString(),
-    // ethers.utils.parseEther("710000").toString()
-    ethers.utils.parseUnits("710000", 6).toString() // 6 decimal usdc
+  const [t0, t1] = tokenCompare(NewoToken, UsdcToken);
+
+  // should simulate a price of 1 USDC / 30 NEWO
+  // const price = encodeSqrtRatioX96(
+  //   t0.address == usdc.address
+  //     ? ethers.utils.parseUnits("30", 10).toHexString()
+  //     : 1,
+  //   t0.address == usdc.address
+  //     ? 1
+  //     : ethers.utils.parseUnits("30", 10).toHexString()
+  // );
+  const price = encodeSqrtRatioX96(
+    t0.address == usdc.address
+      ? ethers.utils.parseUnits("30", 10).toHexString()
+      : 1,
+    t0.address == usdc.address
+      ? 1
+      : ethers.utils.parseUnits("30", 10).toHexString()
   );
+
+  // temporary fix for price being too low
+  if (
+    BigNumber.from(price.toString()).lt("43395051798747794894315217862415328")
+  ) {
+    console.log("Univ3 SDK calculated price too low, re-run the script");
+    process.exit(1);
+  }
 
   // create the pool with the deployer wallet
   const newPool = await nonfungiblePositionManagerContract
     .connect(deployer)
-    .createAndInitializePoolIfNecessary(t0, t1, 500, price, {
-      gasLimit: 10000000,
-    });
+    .createAndInitializePoolIfNecessary(
+      t0.address,
+      t1.address,
+      500,
+      price.toString(),
+      {
+        gasLimit: 5000000,
+      }
+    );
   await newPool.wait();
 
   // get pool address, can't return straight from EVM
@@ -412,7 +552,7 @@ export async function createPool(deployer: any, newo: any, usdc: any) {
     deployer
   );
   const poolAddress = new ethers.Contract(
-    await uniswapV3Factory.getPool(newo.address, usdc.address, 500),
+    await uniswapV3Factory.getPool(t0.address, t1.address, 500),
     UniswapV3PoolABI,
     deployer
   );
@@ -422,17 +562,204 @@ export async function createPool(deployer: any, newo: any, usdc: any) {
   return poolAddress;
 }
 
+// export async function seedPool(
+//   seedWallet: any,
+//   newo: any,
+//   usdc: any
+//   // poolData: any,
+//   // newPool: any
+// ) {
+//   console.log("Seeding the pool...");
+
+//   const NewoToken = new Token(chainId, newo.address, 18, "NEWO", "NEWO");
+//   const UsdcToken = new Token(chainId, usdc.address, 6, "USDC", "USDC"); // 6 decimal usdc
+
+//   // const [t0, t1] = tokenCompare(NewoToken, UsdcToken);
+
+//   // console.log(
+//   //   poolData.fee,
+//   //   poolData.sqrtPriceX96.toString(),
+//   //   poolData.liquidity.toString(),
+//   //   poolData.tick
+//   // );
+
+//   // const NEWO_USDC_POOL = new Pool(
+//   //   NewoToken,
+//   //   UsdcToken,
+//   //   poolData.fee, // fee tier ex 0.05%
+//   //   poolData.sqrtPriceX96.toString(), // current pool price
+//   //   poolData.liquidity.toString(), // current pool liquidity
+//   //   poolData.tick // current pool tick
+//   // );
+
+//   const NEWO_USDC_POOL = new Pool(
+//     NewoToken,
+//     UsdcToken,
+//     500, // fee tier ex 0.05%
+//     encodeSqrtRatioX96(1, 1),
+//     0,
+//     0,
+//     []
+//   );
+
+//   // const tickLower =
+//   //   nearestUsableTick(poolData.tick, poolData.tickSpacing) -
+//   //   poolData.tickSpacing * 2;
+//   // const tickUpper =
+//   //   nearestUsableTick(poolData.tick, poolData.tickSpacing) +
+//   //   poolData.tickSpacing * 2;
+
+//   // calculate amounts from 1000 usdc seed amount
+//   // const [amountNEWO, amountUSDC, L] = getToken0Amounts(
+//   //   amountLPSeedUSDC,
+//   //   -TICK_SPACINGS[FeeAmount.MEDIUM],
+//   //   -TICK_SPACINGS[FeeAmount.MEDIUM],
+//   //   TICK_SPACINGS[FeeAmount.MEDIUM],
+//   //   18,
+//   //   6
+//   // );
+
+//   // // supposed to calculate Lx or Ly
+//   // const liquidityAmount = maxLiquidityForAmounts(
+//   //   encodeSqrtRatioX96(1, 1), // P (Price)
+//   //   encodeSqrtRatioX96(1, 1), // Pa
+//   //   encodeSqrtRatioX96(1, 1), // Pb
+//   //   MaxUint256, // amount0
+//   //   amountLPSeedUSDC.toHexString(), // amount1
+//   //   false
+//   // );
+//   // console.log("liqamount: ", liquidityAmount.toString());
+
+//   // create position instance with calculated liquidity amount
+//   const position = new Position({
+//     pool: NEWO_USDC_POOL,
+//     tickLower: -TICK_SPACINGS[FeeAmount.MEDIUM],
+//     tickUpper: TICK_SPACINGS[FeeAmount.MEDIUM],
+//     liquidity: "100000",
+//   });
+
+//   // -----------------------------------------------------------------------------------------
+//   // provide liquidity to uni v3 pool
+//   console.log("Approving liquidity to existing pool...");
+//   const liqNewoApprove = await newo
+//     .connect(seedWallet)
+//     .approve(positionManagerAddress, newoApprovalAmount, {
+//       gasLimit: 5000000,
+//     });
+//   await liqNewoApprove.wait();
+
+//   const liqUsdcApprove = await usdc
+//     .connect(seedWallet)
+//     .approve(positionManagerAddress, usdcApprovalAmount, {
+//       gasLimit: 5000000,
+//     });
+//   await liqUsdcApprove.wait();
+
+//   const { calldata, value } = NonfungiblePositionManager.addCallParameters(
+//     position,
+//     {
+//       recipient: seedWallet.address,
+//       createPool: true,
+//       slippageTolerance: new Percent(1, 100),
+//       deadline: 999999999999,
+//     }
+//   );
+//   const mintPosition = await seedWallet.sendTransaction({
+//     to: positionManagerAddress,
+//     data: calldata,
+//     value: value,
+//   });
+//   mintPosition.wait();
+
+//   const poolAddress = computePoolAddress({
+//     factoryAddress: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+//     fee: 500,
+//     tokenA: NewoToken,
+//     tokenB: UsdcToken,
+//   });
+//   console.log("Pool Address: ", poolAddress);
+
+//   // // get specific amounts desired from calculated liquidity amount
+//   // const { amount0: amount0Desired, amount1: amount1Desired } =
+//   // position.mintAmounts; // mintAmountsWithSlippage
+
+//   // console.log("amount0: ", amount0Desired.toString());
+//   // console.log("amount1: ", amount1Desired.toString());
+
+//   // // prepare params for minting new liquidity position
+//   // // only uses token1 up to matching amount of token0 from price of pool
+//   // const lpParams = {
+//   //   token0: t0.address,
+//   //   token1: t1.address,
+//   //   fee: 500,
+//   //   tickLower: position.tickLower,
+//   //   tickUpper: position.tickUpper,
+//   //   amount0Desired: amount0Desired.toString(),
+//   //   amount1Desired: amount1Desired.toString(),
+//   //   amount0Min: 0, // only for testnet, vulnerable to frontrunning
+//   //   amount1Min: 0, // only for testnet, vulnerable to frontrunning
+//   //   recipient: seedWallet.address,
+//   //   deadline: Math.floor(Date.now() / 1000) + 120 * 10,
+//   // };
+
+//   // const mintPosition = await nonfungiblePositionManagerContract
+//   //   .connect(seedWallet)
+//   //   .mint(lpParams, {
+//   //     gasLimit: ethers.utils.hexlify(5000000),
+//   //   });
+
+//   const newoBal = await newo.balanceOf(poolAddress);
+//   const usdcBal = await usdc.balanceOf(poolAddress);
+//   console.log("NEWO balance of pool: ", ethers.utils.formatEther(newoBal));
+//   console.log("USDC balance of pool: ", ethers.utils.formatUnits(usdcBal, 6));
+
+//   // // ensure test wallet has enough eth for the transactions
+//   // const newWalletBalance = await seedWallet.getBalance();
+//   // console.log("Estimating gas cost of minting lp position...");
+//   // const lpGasFees = await nonfungiblePositionManagerContract
+//   //   .connect(seedWallet)
+//   //   .estimateGas.mint(lpParams);
+//   // const lpGasPrice = await seedWallet.provider.getFeeData();
+
+//   // // wait for gasPrice of minting lp position
+//   // if (
+//   //   lpGasPrice.maxFeePerGas != null &&
+//   //   lpGasPrice.maxPriorityFeePerGas != null
+//   // ) {
+//   //   const mintGasPrice = lpGasPrice.maxFeePerGas.mul(lpGasFees);
+
+//   //   // check funds for gas
+//   //   if (newWalletBalance.lt(mintGasPrice)) {
+//   //     throw new Error(`Insufficient gas in new wallet for minting LP position`);
+//   //   }
+
+//   //   console.log("Minting lp position...");
+//   //   // univ3 uses nft's for lp positions, mint the new position
+//   //   const mintPosition = await nonfungiblePositionManagerContract
+//   //     .connect(seedWallet)
+//   //     .mint(lpParams, {
+//   //       maxFeePerGas: lpGasPrice.maxFeePerGas,
+//   //       maxPriorityFeePerGas: lpGasPrice.maxPriorityFeePerGas,
+//   //       gasLimit: ethers.utils.hexlify(5000000),
+//   //     });
+//   //   await mintPosition.wait();
+//   //   console.log("-----");
+//   // }
+// }
+
 export async function seedPool(
   seedWallet: any,
   newo: any,
   usdc: any,
-  poolData: any
+  poolData: any,
+  newPool: any
 ) {
   console.log("Seeding the pool...");
 
-  const NewoToken = new Token(chainId, newo.address, 18);
-  // const UsdcToken = new Token(chainId, usdc.address, 18);
-  const UsdcToken = new Token(chainId, usdc.address, 6); // 6 decimal usdc
+  const NewoToken = new Token(chainId, newo.address, 18, "NEWO", "NEWO");
+  const UsdcToken = new Token(chainId, usdc.address, 6, "USDC", "USDC"); // 6 decimal usdc
+
+  const [t0, t1] = tokenCompare(NewoToken, UsdcToken);
 
   const NEWO_USDC_POOL = new Pool(
     NewoToken,
@@ -443,44 +770,63 @@ export async function seedPool(
     poolData.tick // current pool tick
   );
 
-  const position = new Position({
-    pool: NEWO_USDC_POOL,
-    liquidity: amountLiquiditySeed,
-    tickLower:
-      nearestUsableTick(poolData.tick, poolData.tickSpacing) -
-      poolData.tickSpacing * 2,
-    tickUpper:
-      nearestUsableTick(poolData.tick, poolData.tickSpacing) +
-      poolData.tickSpacing * 2,
-  });
-
-  const { amount0: amount0Desired, amount1: amount1Desired } =
-    position.mintAmounts; // mintAmountsWithSlippage
+  const tickLower =
+    nearestUsableTick(poolData.tick, poolData.tickSpacing) -
+    poolData.tickSpacing * 2;
+  const tickUpper =
+    nearestUsableTick(poolData.tick, poolData.tickSpacing) +
+    poolData.tickSpacing * 2;
 
   // -----------------------------------------------------------------------------------------
   // provide liquidity to uni v3 pool
   console.log("Approving liquidity to existing pool...");
   const liqNewoApprove = await newo
     .connect(seedWallet)
-    .approve(positionManagerAddress, newoApprovalAmount, { gasLimit: 5000000 });
+    .approve(positionManagerAddress, newoApprovalAmount, {
+      gasLimit: 5000000,
+    });
   await liqNewoApprove.wait();
 
   const liqUsdcApprove = await usdc
     .connect(seedWallet)
     .approve(positionManagerAddress, usdcApprovalAmount, {
-      gasLimit: 30000000,
+      gasLimit: 5000000,
     });
   await liqUsdcApprove.wait();
-  const [t0, t1] = tokenCompare(newo.address, usdc.address);
+
+  // calculate Lx and Ly and get the lower for liquidity
+  const liquidity = getLiquidity(
+    amountLPSeedUSDC, // 10,000 USDC
+    poolData.tick,
+    tickLower,
+    tickUpper,
+    18,
+    6
+  );
+  console.log("liquidity: ", liquidity);
+
+  const position = new Position({
+    pool: NEWO_USDC_POOL,
+    tickLower: tickLower,
+    tickUpper: tickUpper,
+    liquidity: liquidity,
+  });
+
+  // get specific amounts desired from calculated liquidity amount
+  const { amount0: amount0Desired, amount1: amount1Desired } =
+    position.mintAmounts; // mintAmountsWithSlippage
+
+  console.log("amount0: ", amount0Desired.toString());
+  console.log("amount1: ", amount1Desired.toString());
 
   // prepare params for minting new liquidity position
   // only uses token1 up to matching amount of token0 from price of pool
   const lpParams = {
-    token0: t0,
-    token1: t1,
+    token0: t0.address,
+    token1: t1.address,
     fee: 500,
-    tickLower: position.tickLower,
-    tickUpper: position.tickUpper,
+    tickLower: tickLower,
+    tickUpper: tickUpper,
     amount0Desired: amount0Desired.toString(),
     amount1Desired: amount1Desired.toString(),
     amount0Min: 0, // only for testnet, vulnerable to frontrunning
@@ -489,38 +835,49 @@ export async function seedPool(
     deadline: Math.floor(Date.now() / 1000) + 120 * 10,
   };
 
-  // ensure test wallet has enough eth for the transactions
-  const newWalletBalance = await seedWallet.getBalance();
-  console.log("Estimating gas cost of minting lp position...");
-  const lpGasFees = await nonfungiblePositionManagerContract
+  const mintPosition = await nonfungiblePositionManagerContract
     .connect(seedWallet)
-    .estimateGas.mint(lpParams);
-  const lpGasPrice = await seedWallet.provider.getFeeData();
+    .mint(lpParams, {
+      gasLimit: ethers.utils.hexlify(5000000),
+    });
 
-  // wait for gasPrice of minting lp position
-  if (
-    lpGasPrice.maxFeePerGas != null &&
-    lpGasPrice.maxPriorityFeePerGas != null
-  ) {
-    const mintGasPrice = lpGasPrice.maxFeePerGas.mul(lpGasFees);
+  const newoBal = await newo.balanceOf(newPool.address);
+  const usdcBal = await usdc.balanceOf(newPool.address);
+  console.log("NEWO balance of pool: ", ethers.utils.formatEther(newoBal));
+  console.log("USDC balance of pool: ", ethers.utils.formatUnits(usdcBal, 6));
 
-    // check funds for gas
-    if (newWalletBalance.lt(mintGasPrice)) {
-      throw new Error(`Insufficient gas in new wallet for minting LP position`);
-    }
+  // // ensure test wallet has enough eth for the transactions
+  // const newWalletBalance = await seedWallet.getBalance();
+  // console.log("Estimating gas cost of minting lp position...");
+  // const lpGasFees = await nonfungiblePositionManagerContract
+  //   .connect(seedWallet)
+  //   .estimateGas.mint(lpParams);
+  // const lpGasPrice = await seedWallet.provider.getFeeData();
 
-    console.log("Minting lp position...");
-    // univ3 uses nft's for lp positions, mint the new position
-    const mintPosition = await nonfungiblePositionManagerContract
-      .connect(seedWallet)
-      .mint(lpParams, {
-        maxFeePerGas: lpGasPrice.maxFeePerGas,
-        maxPriorityFeePerGas: lpGasPrice.maxPriorityFeePerGas,
-        gasLimit: ethers.utils.hexlify(5000000),
-      });
-    await mintPosition.wait();
-    console.log("-----");
-  }
+  // // wait for gasPrice of minting lp position
+  // if (
+  //   lpGasPrice.maxFeePerGas != null &&
+  //   lpGasPrice.maxPriorityFeePerGas != null
+  // ) {
+  //   const mintGasPrice = lpGasPrice.maxFeePerGas.mul(lpGasFees);
+
+  //   // check funds for gas
+  //   if (newWalletBalance.lt(mintGasPrice)) {
+  //     throw new Error(`Insufficient gas in new wallet for minting LP position`);
+  //   }
+
+  //   console.log("Minting lp position...");
+  //   // univ3 uses nft's for lp positions, mint the new position
+  //   const mintPosition = await nonfungiblePositionManagerContract
+  //     .connect(seedWallet)
+  //     .mint(lpParams, {
+  //       maxFeePerGas: lpGasPrice.maxFeePerGas,
+  //       maxPriorityFeePerGas: lpGasPrice.maxPriorityFeePerGas,
+  //       gasLimit: ethers.utils.hexlify(5000000),
+  //     });
+  //   await mintPosition.wait();
+  //   console.log("-----");
+  // }
 }
 
 export async function provideLiquidity(
@@ -530,8 +887,9 @@ export async function provideLiquidity(
   poolData: any
 ) {
   const NewoToken = new Token(chainId, newo.address, 18);
-  // const UsdcToken = new Token(chainId, usdc.address, 18);
   const UsdcToken = new Token(chainId, usdc.address, 6); // 6 decimal usdc
+
+  const [t0, t1] = tokenCompare(newo, usdc);
 
   const NEWO_USDC_POOL = new Pool(
     NewoToken,
@@ -553,11 +911,10 @@ export async function provideLiquidity(
       poolData.tickSpacing * 2,
   });
 
-  const { amount0: amount0Desired, amount1: amount1Desired } =
-    position.mintAmounts; // mintAmountsWithSlippage
-
   // -----------------------------------------------------------------------------------------
   // provide liquidity to uni v3 pool
+  console.log("Approving liquidity to existing pool...");
+
   const liqNewoApprove = await newo
     .connect(newWallet)
     .approve(positionManagerAddress, newoApprovalAmount, { gasLimit: 5000000 });
@@ -567,12 +924,16 @@ export async function provideLiquidity(
     .approve(positionManagerAddress, usdcApprovalAmount, { gasLimit: 5000000 });
   await liqUsdcApprove.wait();
 
-  const [t0, t1] = tokenCompare(newo.address, usdc.address);
+  const { amount0: amount0Desired, amount1: amount1Desired } =
+    position.mintAmounts; // mintAmountsWithSlippage
+
+  console.log("amount0: ", amount0Desired.toString());
+  console.log("amount1: ", amount1Desired.toString());
 
   // prepare params for minting new liquidity position
   const lpParams = {
-    token0: t0,
-    token1: t1,
+    token0: t0.address,
+    token1: t1.address,
     fee: poolData.fee,
     tickLower: position.tickLower,
     tickUpper: position.tickUpper,
